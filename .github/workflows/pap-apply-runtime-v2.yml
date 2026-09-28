@@ -14,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      BASE_SHA: b2bea227b5b0ac893e2781f20495db55a1a1122a
       PATCH_SHA256: 5a4da5d9859c86d93ca1c04e2e15b64b036277ef13ee3c225ae25036f9795ee2
     steps:
       - name: Sparse fetch patch surface
@@ -69,24 +68,25 @@ jobs:
             tests/unit/proxyfetch-retry-fresh-socket-4252.test.ts \
             tests/unit/proxyfetch-undici-retry.test.ts
 
-      - name: Verify exact canary source result
+      - name: Verify exact canary file bytes
         shell: bash
         run: |
           set -euo pipefail
-          git diff --cached --binary "$BASE_SHA" -- \
-            open-sse/utils/earlyStreamKeepalive.ts \
-            open-sse/utils/proxyFetch.ts \
-            open-sse/utils/nativeDirectHosts.ts \
-            src/lib/db/providers/lazyConnectionView.ts \
-            src/lib/db/readCache.ts \
-            src/lib/providers/validation/specialtyInline.ts \
-            src/shared/utils/bearerCredential.ts \
-            tests/unit/nvidia-nim-validator.test.ts \
-            tests/unit/pap-nvidia-bearer-normalization.test.ts \
-            tests/unit/pap-nvidia-native-direct-transport.test.ts \
-            tests/unit/proxyfetch-retry-fresh-socket-4252.test.ts \
-            tests/unit/proxyfetch-undici-retry.test.ts > /tmp/result.patch
-          echo "$PATCH_SHA256  /tmp/result.patch" | sha256sum -c -
+          cat > /tmp/canary-files.sha256 <<'EOF'
+          7c07b7ea2ed127f45de916d1fe19113f3328b8cdc104f704489f03fa4d27ae67  open-sse/utils/earlyStreamKeepalive.ts
+          a9a5bc88fc5460db97d4f45541273999c7dab798df2f97a2f63ab76ff6e665a6  open-sse/utils/proxyFetch.ts
+          c27ea10b12f1a5fe8f0a99124a97a083d82bf5533368567e08536bcddb15a4ff  open-sse/utils/nativeDirectHosts.ts
+          8404aaed66cad2408f7cd33efebd625b63319f3229f229698993cf5ff6ba4f75  src/lib/db/providers/lazyConnectionView.ts
+          d907fc82214b02088794cf28f5a29d4fa6e7f39dfa6c1813e45d578120080fcd  src/lib/db/readCache.ts
+          3df61005669ab73c43445eb0719257ac002e5f15e2e910b4ae23581f8181a4ba  src/lib/providers/validation/specialtyInline.ts
+          407505bc3004c05eef33241588f42e77e85d951adb158a87f36a6fd24ee23110  src/shared/utils/bearerCredential.ts
+          5715b8bb9111f3e057ebbae743060eb5fd619b0eba48c3b6af17bea6d9a62700  tests/unit/nvidia-nim-validator.test.ts
+          07e84a9bd947f03ccda3bf2a0ba320cb2c97f5d36ce24cfb28032919e219c0a4  tests/unit/pap-nvidia-bearer-normalization.test.ts
+          2be2789758ca45505e4400892448a39a5228f3045da1ca63fb3bd83d50c6af6d  tests/unit/pap-nvidia-native-direct-transport.test.ts
+          ddc1c61e794272dec0ce195411f3fa36bcddf4e523b0ebd426ac4993dfa117f0  tests/unit/proxyfetch-retry-fresh-socket-4252.test.ts
+          0eed0f2b4f22fb9f64ea96a0e3e9c580e87f0ff11d7712e962a54943aab40421  tests/unit/proxyfetch-undici-retry.test.ts
+          EOF
+          sha256sum -c /tmp/canary-files.sha256
 
       - name: Remove transfer scaffolding
         shell: bash
