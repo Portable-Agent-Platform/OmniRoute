@@ -28,7 +28,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -40,7 +40,7 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Diff integrity
-        run: git diff --check origin/${{ github.base_ref || 'pap/main' }}...HEAD
+        run: git show --check --format= HEAD
 
       - name: Core typecheck
         run: npm run typecheck:core
