@@ -1,0 +1,44 @@
+name: PAP Bootstrap Request Brand Indentation
+
+on:
+  push:
+    branches: [pap/request-brand-v1]
+
+permissions:
+  contents: write
+
+jobs:
+  indent:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Indent request reconstruction block
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("open-sse/utils/earlyStreamKeepalive.ts")
+          lines = p.read_text().splitlines()
+          start_marker = "// Next.js route handlers can hand us a Request from a different fetch realm."
+          end_marker = "const wrappedReq = new Request(request.url, requestInit);"
+          starts = [i for i, line in enumerate(lines) if line == start_marker]
+          ends = [i for i, line in enumerate(lines) if line == end_marker]
+          if len(starts) != 1 or len(ends) != 1 or ends[0] < starts[0]:
+              raise SystemExit(f"unexpected block markers: start={starts}, end={ends}")
+          for i in range(starts[0], ends[0] + 1):
+              lines[i] = "  " + lines[i]
+          p.write_text("\n".join(lines) + "\n")
+          PY
+          git diff --check
+
+      - name: Commit indentation cleanup and remove bootstrap
+        run: |
+          rm .github/workflows/pap-bootstrap-request-brand-indent.yml
+          git config user.name "PAP Automation"
+          git config user.email "pap-automation@users.noreply.github.com"
+          git add open-sse/utils/earlyStreamKeepalive.ts .github/workflows/pap-bootstrap-request-brand-indent.yml
+          git commit -m "PAP: indent cross-realm request fix"
+          git push origin HEAD:pap/request-brand-v1
