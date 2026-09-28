@@ -3,6 +3,7 @@
 // which delegates to safeOutboundFetch with bypassProxyPatch. Behavior is byte-identical.
 import { safeOutboundFetch } from "@/shared/network/safeOutboundFetch";
 import { getProviderValidationGuard } from "@/shared/network/outboundUrlGuardPolicy";
+import { normalizeBearerCredentialForRuntime } from "@/shared/utils/bearerCredential";
 
 // Standardized desktop Chrome UA for web-cookie/no-auth session probes (minimizes anti-bot detection).
 export const STANDARD_USER_AGENT =
@@ -78,8 +79,9 @@ export function buildBearerHeaders(apiKey: string, providerSpecificData: any = {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
+  const token = normalizeBearerCredentialForRuntime(apiKey);
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
   return applyCustomUserAgent(headers, providerSpecificData);
 }
