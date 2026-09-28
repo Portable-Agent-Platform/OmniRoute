@@ -338,7 +338,7 @@ export function withDeadlineSignal(request: Request): {
   // admission rebuilds, which both copy headers but mint new signal objects.
   const token = `dl-${Date.now().toString(36)}-${(deadlineTokenSeq += 1)}`;
   headers.set(DEADLINE_TOKEN_HEADER, token);
-  // Next.js route handlers can hand us a Request from a different fetch realm.
+// Next.js route handlers can hand us a Request from a different fetch realm.
 // Passing that foreign object directly to Node's global Request constructor can
 // fail private-brand checks before routing begins. Rebuild from Web-standard
 // primitives instead; the body stream remains zero-copy and admission consumes it
