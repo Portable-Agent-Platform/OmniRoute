@@ -338,23 +338,23 @@ export function withDeadlineSignal(request: Request): {
   // admission rebuilds, which both copy headers but mint new signal objects.
   const token = `dl-${Date.now().toString(36)}-${(deadlineTokenSeq += 1)}`;
   headers.set(DEADLINE_TOKEN_HEADER, token);
-// Next.js route handlers can hand us a Request from a different fetch realm.
-// Passing that foreign object directly to Node's global Request constructor can
-// fail private-brand checks before routing begins. Rebuild from Web-standard
-// primitives instead; the body stream remains zero-copy and admission consumes it
-// immediately into its bounded byte buffer.
-const method = request.method;
-const hasBody = method !== "GET" && method !== "HEAD" && request.body !== null;
-const requestInit: RequestInit & { duplex?: "half" } = {
-  method,
-  headers,
-  signal: combined,
-};
-if (hasBody) {
-  requestInit.body = request.body;
-  requestInit.duplex = "half";
-}
-const wrappedReq = new Request(request.url, requestInit);
+  // Next.js route handlers can hand us a Request from a different fetch realm.
+  // Passing that foreign object directly to Node's global Request constructor can
+  // fail private-brand checks before routing begins. Rebuild from Web-standard
+  // primitives instead; the body stream remains zero-copy and admission consumes it
+  // immediately into its bounded byte buffer.
+  const method = request.method;
+  const hasBody = method !== "GET" && method !== "HEAD" && request.body !== null;
+  const requestInit: RequestInit & { duplex?: "half" } = {
+    method,
+    headers,
+    signal: combined,
+  };
+  if (hasBody) {
+    requestInit.body = request.body;
+    requestInit.duplex = "half";
+  }
+  const wrappedReq = new Request(request.url, requestInit);
   deadlineControllers.set(combined, deadlineController);
   deadlineControllersByToken.set(token, new WeakRef(deadlineController));
   deadlineTokenByController.set(deadlineController, token);
