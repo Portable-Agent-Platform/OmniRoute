@@ -12,10 +12,33 @@ jobs:
   apply:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Sparse fetch patch surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git sparse-checkout init --no-cone
+          git sparse-checkout set --no-cone \
+            /open-sse/utils/earlyStreamKeepalive.ts \
+            /open-sse/utils/proxyFetch.ts \
+            /open-sse/utils/nativeDirectHosts.ts \
+            /src/lib/db/providers/lazyConnectionView.ts \
+            /src/lib/db/readCache.ts \
+            /src/lib/providers/validation/specialtyInline.ts \
+            /src/shared/utils/bearerCredential.ts \
+            /tests/unit/nvidia-nim-validator.test.ts \
+            /tests/unit/pap-nvidia-bearer-normalization.test.ts \
+            /tests/unit/pap-nvidia-native-direct-transport.test.ts \
+            /tests/unit/proxyfetch-retry-fresh-socket-4252.test.ts \
+            /tests/unit/proxyfetch-undici-retry.test.ts \
+            /.pap-transfer/ \
+            /.github/workflows/pap-apply-runtime-v2.yml
+          git fetch --depth=1 --filter=blob:none origin pap/nvidia-runtime-v2
+          git checkout -B pap/nvidia-runtime-v2 FETCH_HEAD
 
       - name: Reassemble and verify patch
         shell: bash
