@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      BASE_SHA: b2bea227b5b0ac893e2781f20495db55a1a1122a
+      PATCH_SHA256: 5a4da5d9859c86d93ca1c04e2e15b64b036277ef13ee3c225ae25036f9795ee2
     steps:
       - name: Sparse fetch patch surface
         shell: bash
@@ -37,31 +39,53 @@ jobs:
             /tests/unit/proxyfetch-undici-retry.test.ts \
             /.pap-transfer/ \
             /.github/workflows/pap-apply-runtime-v2.yml
-          git fetch --depth=1 --filter=blob:none origin pap/nvidia-runtime-v2
+          git fetch --depth=20 --filter=blob:none origin pap/nvidia-runtime-v2
           git checkout -B pap/nvidia-runtime-v2 FETCH_HEAD
 
-      - name: Verify transfer part 00
-        run: base64 -d .pap-transfer/runtime-v2-00.b64 | sha256sum | grep -q '^d1409e23d176973c452d635048e6164b2077c0c6d50a7e060ab85dec122a7299 '
-      - name: Verify transfer part 01
-        run: base64 -d .pap-transfer/runtime-v2-01.b64 | sha256sum | grep -q '^6d8fa04f9b3aec292194875350fbc2db8053c103de0b6fb0111ba5fe2b0b0528 '
-      - name: Verify transfer part 02
-        run: base64 -d .pap-transfer/runtime-v2-02.b64 | sha256sum | grep -q '^84b311e5fb84b8b7e80504c4ca1a57d4ff065baa614de3ce6b8c310277f4b411 '
-      - name: Verify transfer part 03
-        run: base64 -d .pap-transfer/runtime-v2-03.b64 | sha256sum | grep -q '^186cc60319afc3b59557be98059e14fb6262b061d0079b49d75cd7e4cc4fc080 '
-
-      - name: Reassemble and verify patch
+      - name: Apply transfer patch safely
         shell: bash
         run: |
           set -euo pipefail
           cat .pap-transfer/runtime-v2-*.b64 | base64 -d > /tmp/runtime.patch
-          echo "5a4da5d9859c86d93ca1c04e2e15b64b036277ef13ee3c225ae25036f9795ee2  /tmp/runtime.patch" | sha256sum -c -
           git apply --check /tmp/runtime.patch
+          git apply /tmp/runtime.patch
+          git add \
+            open-sse/utils/earlyStreamKeepalive.ts \
+            open-sse/utils/proxyFetch.ts \
+            open-sse/utils/nativeDirectHosts.ts \
+            src/lib/db/providers/lazyConnectionView.ts \
+            src/lib/db/readCache.ts \
+            src/lib/providers/validation/specialtyInline.ts \
+            src/shared/utils/bearerCredential.ts \
+            tests/unit/nvidia-nim-validator.test.ts \
+            tests/unit/pap-nvidia-bearer-normalization.test.ts \
+            tests/unit/pap-nvidia-native-direct-transport.test.ts \
+            tests/unit/proxyfetch-retry-fresh-socket-4252.test.ts \
+            tests/unit/proxyfetch-undici-retry.test.ts
 
-      - name: Apply canary-proven patch
+      - name: Verify exact canary source result
         shell: bash
         run: |
           set -euo pipefail
-          git apply /tmp/runtime.patch
+          git diff --cached --binary "$BASE_SHA" -- \
+            open-sse/utils/earlyStreamKeepalive.ts \
+            open-sse/utils/proxyFetch.ts \
+            open-sse/utils/nativeDirectHosts.ts \
+            src/lib/db/providers/lazyConnectionView.ts \
+            src/lib/db/readCache.ts \
+            src/lib/providers/validation/specialtyInline.ts \
+            src/shared/utils/bearerCredential.ts \
+            tests/unit/nvidia-nim-validator.test.ts \
+            tests/unit/pap-nvidia-bearer-normalization.test.ts \
+            tests/unit/pap-nvidia-native-direct-transport.test.ts \
+            tests/unit/proxyfetch-retry-fresh-socket-4252.test.ts \
+            tests/unit/proxyfetch-undici-retry.test.ts > /tmp/result.patch
+          echo "$PATCH_SHA256  /tmp/result.patch" | sha256sum -c -
+
+      - name: Remove transfer scaffolding
+        shell: bash
+        run: |
+          set -euo pipefail
           git rm -r .pap-transfer .github/workflows/pap-apply-runtime-v2.yml
           git add -A
           git diff --cached --check
