@@ -10,6 +10,7 @@
  */
 
 import { decryptQuiet } from "../encryption";
+import { normalizeBearerCredentialForRuntime } from "../../../shared/utils/bearerCredential";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -34,6 +35,17 @@ function toNullableNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   const parsed = toNumber(value, Number.NaN);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeCredentialForRuntime(
+  provider: string,
+  field: string,
+  value: string | null | undefined
+): string | null | undefined {
+  if (provider === "nvidia" && field === "apiKey") {
+    return normalizeBearerCredentialForRuntime(value);
+  }
+  return value;
 }
 
 export interface ProviderConnectionView {
@@ -123,7 +135,11 @@ export function createLazyConnectionView(row: Record<string, unknown>): Provider
       const provider = base.provider;
       decrypted = {
         apiKey: toStringOrNull(
-          decryptQuiet(base.apiKey, { connectionId, provider, field: "apiKey" })
+          normalizeCredentialForRuntime(
+            provider,
+            "apiKey",
+            decryptQuiet(base.apiKey, { connectionId, provider, field: "apiKey" })
+          )
         ),
         accessToken: toStringOrNull(
           decryptQuiet(base.accessToken, { connectionId, provider, field: "accessToken" })
@@ -204,5 +220,5 @@ function lazyDecrypt(
   meta: { connectionId: string; provider: string; field: string }
 ): string | null | undefined {
   if (typeof value !== "string") return undefined;
-  return decryptQuiet(value, meta);
+  return normalizeCredentialForRuntime(meta.provider, meta.field, decryptQuiet(value, meta));
 }
