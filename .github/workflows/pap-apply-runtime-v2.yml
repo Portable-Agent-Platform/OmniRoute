@@ -1,0 +1,44 @@
+name: PAP Apply NVIDIA Runtime Patch
+
+on:
+  push:
+    branches:
+      - pap/nvidia-runtime-v2
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .pap-transfer/runtime-v2-*.b64 | base64 -d > /tmp/runtime.patch
+          echo "5a4da5d9859c86d93ca1c04e2e15b64b036277ef13ee3c225ae25036f9795ee2  /tmp/runtime.patch" | sha256sum -c -
+          git apply --check /tmp/runtime.patch
+
+      - name: Apply canary-proven patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply /tmp/runtime.patch
+          git rm -r .pap-transfer .github/workflows/pap-apply-runtime-v2.yml
+          git add -A
+          git diff --cached --check
+
+      - name: Commit exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "PAP: fix NVIDIA auth and direct runtime transport"
+          git push origin HEAD:pap/nvidia-runtime-v2
