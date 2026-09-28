@@ -12,6 +12,8 @@
  *   const settings = await dbCache.getSettings();
  */
 
+import { normalizeBearerCredentialForRuntime } from "@/shared/utils/bearerCredential";
+
 type CacheEntry<T> = {
   value: T;
   expiresAt: number;
@@ -140,6 +142,20 @@ const connectionByIdCache = new TTLCache<Record<string, unknown> | null>(
 );
 const nodesCache = new TTLCache<(Record<string, unknown> | null)[]>(CONNECTIONS_TTL_MS);
 
+/** PAP: normalize provider credentials only in memory before cached consumers use them. */
+export function normalizeCachedProviderConnectionForRuntime(
+  value: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  if (!value || value.provider !== "nvidia") return value;
+  return {
+    ...value,
+    apiKey:
+      typeof value.apiKey === "string"
+        ? normalizeBearerCredentialForRuntime(value.apiKey)
+        : value.apiKey,
+  };
+}
+
 /**
  * Cached wrapper for getProviderConnectionById.
  * Keyed by connection ID, shared 5s TTL.
@@ -153,7 +169,7 @@ export async function getCachedProviderConnectionById(
   if (cached !== undefined) return cached;
 
   const { getProviderConnectionById } = await import("@/lib/db/providers");
-  const value = await getProviderConnectionById(id);
+  const value = normalizeCachedProviderConnectionForRuntime(await getProviderConnectionById(id));
   connectionByIdCache.set(id, value);
   return value;
 }
