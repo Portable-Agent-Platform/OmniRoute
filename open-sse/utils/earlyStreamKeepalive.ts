@@ -313,8 +313,8 @@ export function __getDeadlineTokenRegistrySizeForTests(): number {
  * The wrapped request MUST be the one the route hands downstream (admission,
  * body parse, `handleChat`): the handler snapshots `request.signal` after
  * admission, so wrapping after that point would not propagate. Rebuilt via
- * `new Request(request, { signal, headers })`, which preserves method, url and
- * body byte-for-byte.
+ * a URL + explicit method/headers/body-stream RequestInit, which preserves method, url and
+ * body byte-for-byte without crossing fetch-realm private brands.
  *
  * Controller recovery downstream (`getDeadlineController`) is two-layered:
  * the combined signal object (fast path — same object when nothing rebuilds),
@@ -338,7 +338,23 @@ export function withDeadlineSignal(request: Request): {
   // admission rebuilds, which both copy headers but mint new signal objects.
   const token = `dl-${Date.now().toString(36)}-${(deadlineTokenSeq += 1)}`;
   headers.set(DEADLINE_TOKEN_HEADER, token);
-  const wrappedReq = new Request(request, { signal: combined, headers });
+  // Next.js route handlers can hand us a Request from a different fetch realm.
+  // Passing that foreign object directly to Node's global Request constructor can
+  // fail private-brand checks before routing begins. Rebuild from Web-standard
+  // primitives instead; the body stream remains zero-copy and admission consumes it
+  // immediately into its bounded byte buffer.
+  const method = request.method;
+  const hasBody = method !== "GET" && method !== "HEAD" && request.body !== null;
+  const requestInit: RequestInit & { duplex?: "half" } = {
+    method,
+    headers,
+    signal: combined,
+  };
+  if (hasBody) {
+    requestInit.body = request.body;
+    requestInit.duplex = "half";
+  }
+  const wrappedReq = new Request(request.url, requestInit);
   deadlineControllers.set(combined, deadlineController);
   deadlineControllersByToken.set(token, new WeakRef(deadlineController));
   deadlineTokenByController.set(deadlineController, token);

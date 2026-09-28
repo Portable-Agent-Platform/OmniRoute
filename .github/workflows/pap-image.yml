@@ -75,7 +75,7 @@ jobs:
           fi
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
-      - name: Runtime health smoke test
+      - name: Runtime health and chat-route smoke test
         shell: bash
         env:
           SMOKE_IMAGE: ${{ steps.smoke-image.outputs.ref }}
@@ -100,6 +100,18 @@ jobs:
             exit 1
           fi
           docker exec "$name" node healthcheck.mjs
+          docker exec -i "$name" node --input-type=module - <<'NODE'
+          const response = await fetch("http://127.0.0.1:20128/v1/chat/completions", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ model: 123, messages: [{ role: "user", content: "test" }] }),
+          });
+          const body = await response.text();
+          if (response.status !== 400) {
+            console.error(`chat route smoke expected 400, received ${response.status}: ${body.slice(0, 500)}`);
+            process.exit(1);
+          }
+          NODE
 
       - name: Record image identity
         run: |
@@ -107,5 +119,6 @@ jobs:
           echo "- Image: \`${IMAGE}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Digest: \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Runtime smoke: \`PASS\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Runtime health: \`PASS\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Chat route smoke: \`PASS\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Published: \`${{ github.event_name != 'pull_request' }}\`" >> "$GITHUB_STEP_SUMMARY"
