@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeBearerCredentialForRuntime } from "../../src/shared/utils/bearerCredential.ts";
+import { normalizeBearerCredentialForRuntime, normalizeNvidiaApiKeyForRuntime } from "../../src/shared/utils/bearerCredential.ts";
 import { buildBearerHeaders } from "../../src/lib/providers/validation/headers.ts";
 import {
   createLazyConnectionView,
@@ -51,4 +51,12 @@ test("PAP lazy credential normalization does not alter non-NVIDIA apiKeys", () =
     apiKey: " Bearer custom-token ",
   });
   assert.equal(view.apiKey, " Bearer custom-token ");
+});
+
+
+test("PAP NVIDIA normalization accepts NVIDIA env-assignment and quoted copy/paste forms", () => {
+  assert.equal(normalizeNvidiaApiKeyForRuntime("NVIDIA_API_KEY=nvapi-example"), "nvapi-example");
+  assert.equal(normalizeNvidiaApiKeyForRuntime("export NVIDIA_API_KEY=\"nvapi-example\""), "nvapi-example");
+  assert.equal(normalizeNvidiaApiKeyForRuntime("Bearer 'nvapi-example'"), "nvapi-example");
+  assert.equal(normalizeNvidiaApiKeyForRuntime("  nvapi-example  "), "nvapi-example");
 });

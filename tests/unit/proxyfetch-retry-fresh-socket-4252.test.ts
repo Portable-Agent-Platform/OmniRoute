@@ -2,8 +2,8 @@
  * #4252 — Undici dispatcher fails on direct provider requests in 502 bursts.
  *
  * The default direct dispatcher pools keep-alive sockets for up to
- * `fetchKeepAliveTimeoutMs` (4 s). Edges like nvidia / opencode-zen silently
- * close idle keep-alive sockets within that window, so the next request reusing
+ * `fetchKeepAliveTimeoutMs` (4 s). Some provider edges silently close idle
+ * keep-alive sockets within that window, so the next request reusing
  * a pooled socket fails with `UND_ERR_SOCKET` ("other side closed") — in bursts.
  *
  * proxyFetch retries once on such transient socket errors, but the retry reused
@@ -49,7 +49,7 @@ test("#4252 a transient socket failure retries on a FRESH (no-keep-alive) dispat
     new Response("native-should-not-fire", { status: 200 });
 
   const res = await proxyFetch(
-    "https://integrate.api.nvidia.com/v1/chat/completions",
+    "https://example.invalid/v1/chat/completions",
     { method: "POST" },
     { undiciFetch: mockUndici, nativeFetch: mockNative }
   );

@@ -5,10 +5,10 @@
 // construction + dispatch — these are just the leaf validator bodies.
 import { validateQoderCliPat } from "@omniroute/open-sse/services/qoderCli.ts";
 import { KiroService } from "@/lib/oauth/services/kiro";
-import { resolveNvidiaValidationModel } from "@/lib/providers/nvidiaValidationModel";
-import { normalizeBaseUrl } from "./urlHelpers";
+import { addModelsSuffix, normalizeBaseUrl } from "./urlHelpers";
 import { resolveXiaomiTokenPlanBaseUrl } from "@/shared/constants/xiaomiTokenPlanRegions";
 import { buildBearerHeaders, directHttpsRequest } from "./headers";
+import { normalizeNvidiaApiKeyForRuntime } from "@/shared/utils/bearerCredential";
 import { toValidationErrorResult, validationRead, validationWrite } from "./transport";
 import { validateKiroApiKeyRuntimeProbe } from "./kiro";
 
@@ -245,38 +245,55 @@ export function normalizeNvidiaValidationFailure(error: unknown) {
 export async function validateNvidiaProvider({ apiKey, providerSpecificData }: any) {
   try {
     const baseUrlRaw =
-      providerSpecificData?.baseUrl || "https://integrate.api.nvidia.com/v1/chat/completions";
+      providerSpecificData?.baseUrl || "https://integrate.api.nvidia.com/v1";
     const normalized = normalizeBaseUrl(baseUrlRaw);
-    const chatBase = normalized.replace(/\/models$/, "");
-    const chatUrl = normalized.endsWith("/chat/completions")
-      ? normalized
-      : `${chatBase}/chat/completions`;
-    // #3116: probe a universally-available model rather than models[0]
-    // (z-ai/glm-5.1), which requires the "Public API Endpoints" account permission
-    // and can hang/be DEGRADED — making a *valid* key fail with "Upstream Error".
-    const modelId = resolveNvidiaValidationModel(providerSpecificData);
-    // #3226: use raw https (bypass the proxy/TLS-patched fetch) — the undici
-    // dispatcher stalls against NVIDIA's endpoint, causing a 504 timeout.
+    const modelsUrl = addModelsSuffix(normalized);
+    const headers = buildBearerHeaders(
+      normalizeNvidiaApiKeyForRuntime(apiKey) || "",
+      providerSpecificData
+    );
+
+    // PAP: credential validity and model capability are separate concerns.
+    // NVIDIA's authenticated /models endpoint proves whether the key itself is
+    // accepted without coupling key health to one particular inference model.
+    // A chat-model 401/403 can otherwise falsely poison a valid key when a model
+    // is permission-gated, temporarily unavailable, or changes capability rules.
     const res = await directHttpsRequest(
-      chatUrl,
+      modelsUrl,
       {
-        method: "POST",
-        headers: buildBearerHeaders(apiKey, providerSpecificData),
-        body: JSON.stringify({
-          model: modelId,
-          messages: [{ role: "user", content: "test" }],
-          max_tokens: 1,
-        }),
+        method: "GET",
+        headers,
       },
       20000
     );
+
     if (res.status === 401 || res.status === 403) {
-      return { valid: false, error: "Invalid API key" };
+      return { valid: false, error: "Invalid API key", statusCode: res.status, method: "models_auth_probe" };
     }
-    // Any non-auth response (200, 400, 422, 429) means auth passed
-    return { valid: true, error: null };
+
+    if (res.ok) {
+      return { valid: true, error: null, statusCode: res.status, method: "models_auth_probe" };
+    }
+
+    // Non-auth failures do not establish that the credential is bad. Keep the
+    // connection selectable and surface the probe as inconclusive instead of
+    // turning a transient/catalog-specific response into an auth cooldown.
+    return {
+      valid: true,
+      error: null,
+      warning: `NVIDIA models auth probe returned HTTP ${res.status}; credential validity is inconclusive`,
+      statusCode: res.status,
+      method: "models_auth_probe_inconclusive",
+    };
   } catch (error: any) {
-    return normalizeNvidiaValidationFailure(error);
+    const failure = normalizeNvidiaValidationFailure(error);
+    if (failure.valid) return failure;
+    return {
+      valid: true,
+      error: null,
+      warning: failure.error || "NVIDIA models auth probe failed; credential validity is inconclusive",
+      method: "models_auth_probe_inconclusive",
+    };
   }
 }
 

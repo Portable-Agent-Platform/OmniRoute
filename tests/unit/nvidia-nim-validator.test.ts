@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import http from "node:http";
 
 // #2463 — NVIDIA NIM validation must not crash with `e.startsWith is not a function`
-// when providerSpecificData has malformed shapes; and the validation must use a
-// direct chat probe instead of the /models probe.
+// when providerSpecificData has malformed shapes. PAP validates NVIDIA credentials
+// against the authenticated /models endpoint so model capability cannot poison key health.
 //
-// #3226 — the validator now probes via `directHttpsRequest` → `safeOutboundFetch`
+// The validator probes via `directHttpsRequest` → `safeOutboundFetch`
 // with `bypassProxyPatch: true`, which uses the ORIGINAL (un-patched) native fetch
 // captured at module load. Patching `globalThis.fetch` in the test no longer
 // intercepts it, so we point `baseUrl` at a real local HTTP server instead (the
@@ -61,9 +61,11 @@ test("normalizeBaseUrl tolerates non-string baseUrl without throwing", async () 
   }
 });
 
-test("nvidia specialty validator returns Invalid API key on 401", async () => {
+test("nvidia specialty validator returns Invalid API key on authenticated models 401", async () => {
   await withMockServer(
-    (_req, res) => {
+    (req, res) => {
+      assert.equal(req.method, "GET");
+      assert.ok(String(req.url).endsWith("/models"));
       res.writeHead(401, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "unauthorized" }));
     },
@@ -75,17 +77,19 @@ test("nvidia specialty validator returns Invalid API key on 401", async () => {
       });
       assert.equal(result.valid, false);
       assert.equal(result.error, "Invalid API key");
+      assert.equal(result.statusCode, 401);
+      assert.equal(result.method, "models_auth_probe");
     }
   );
 });
 
-test("nvidia specialty validator accepts a successful chat probe", async () => {
+test("nvidia specialty validator accepts authenticated models 200 without chat probe", async () => {
   const calls: string[] = [];
   await withMockServer(
     (req, res) => {
-      calls.push(String(req.url));
+      calls.push(`${req.method} ${req.url}`);
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({}));
+      res.end(JSON.stringify({ data: [{ id: "nvidia/example" }] }));
     },
     async (baseUrl) => {
       const result = await validateProviderApiKey({
@@ -94,35 +98,17 @@ test("nvidia specialty validator accepts a successful chat probe", async () => {
         providerSpecificData: { baseUrl },
       });
       assert.equal(result.valid, true);
-      assert.ok(
-        calls.every((u) => !u.endsWith("/v1/models")),
-        `should not call /v1/models, called: ${JSON.stringify(calls)}`
-      );
-      assert.ok(
-        calls.some((u) => u.endsWith("/chat/completions")),
-        `should call /chat/completions, called: ${JSON.stringify(calls)}`
-      );
+      assert.equal(result.method, "models_auth_probe");
+      assert.deepEqual(calls, ["GET /v1/models"]);
     }
   );
 });
 
-test("nvidia specialty validator falls back to stable chat validation model", async () => {
-  let payload: any = null;
-  const calls: string[] = [];
+test("nvidia specialty validator keeps non-auth models failures inconclusive", async () => {
   await withMockServer(
-    (req, res) => {
-      calls.push(String(req.url));
-      let body = "";
-      req.on("data", (chunk) => {
-        body += String(chunk);
-      });
-      req.on("end", () => {
-        if (String(req.url).endsWith("/chat/completions")) {
-          payload = JSON.parse(body || "{}");
-        }
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({}));
-      });
+    (_req, res) => {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "temporarily unavailable" }));
     },
     async (baseUrl) => {
       const result = await validateProviderApiKey({
@@ -131,11 +117,9 @@ test("nvidia specialty validator falls back to stable chat validation model", as
         providerSpecificData: { baseUrl },
       });
       assert.equal(result.valid, true);
-      assert.ok(
-        calls.some((u) => u.endsWith("/chat/completions")),
-        `should fall back to /chat/completions, called: ${JSON.stringify(calls)}`
-      );
-      assert.equal(payload?.model, "nvidia/nemotron-3.5-lightning-30b-a3b");
+      assert.equal(result.statusCode, 503);
+      assert.equal(result.method, "models_auth_probe_inconclusive");
+      assert.match(String(result.warning), /inconclusive/i);
     }
   );
 });
