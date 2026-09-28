@@ -42,12 +42,18 @@ jobs:
           git fetch --depth=20 --filter=blob:none origin pap/nvidia-runtime-v2
           git checkout -B pap/nvidia-runtime-v2 FETCH_HEAD
 
-      - name: Apply transfer patch safely
+      - name: Download and verify canary patch
         shell: bash
         run: |
           set -euo pipefail
-          cat .pap-transfer/runtime-v2-*.b64 | base64 -d > /tmp/runtime.patch
+          curl -fsS --connect-timeout 10 --max-time 30 http://2.25.245.64:18080/runtime.patch -o /tmp/runtime.patch
+          echo "$PATCH_SHA256  /tmp/runtime.patch" | sha256sum -c -
           git apply --check /tmp/runtime.patch
+
+      - name: Apply canary-proven patch
+        shell: bash
+        run: |
+          set -euo pipefail
           git apply /tmp/runtime.patch
           git add \
             open-sse/utils/earlyStreamKeepalive.ts \
