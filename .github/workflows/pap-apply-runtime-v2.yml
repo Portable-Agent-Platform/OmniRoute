@@ -46,7 +46,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS --connect-timeout 10 --max-time 30 http://2.25.245.64:18080/runtime.patch -o /tmp/runtime.patch
+          curl -fsS --connect-timeout 10 --max-time 30 https://omniroute.neoparker.duckdns.org/pap-runtime-v2.patch -o /tmp/runtime.patch
           echo "$PATCH_SHA256  /tmp/runtime.patch" | sha256sum -c -
           git apply --check /tmp/runtime.patch
 
