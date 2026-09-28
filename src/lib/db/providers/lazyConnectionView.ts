@@ -10,7 +10,7 @@
  */
 
 import { decryptQuiet } from "../encryption";
-import { normalizeBearerCredentialForRuntime } from "../../../shared/utils/bearerCredential";
+import { normalizeNvidiaApiKeyForRuntime } from "../../../shared/utils/bearerCredential";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -43,7 +43,7 @@ function normalizeCredentialForRuntime(
   value: string | null | undefined
 ): string | null | undefined {
   if (provider === "nvidia" && field === "apiKey") {
-    return normalizeBearerCredentialForRuntime(value);
+    return normalizeNvidiaApiKeyForRuntime(value);
   }
   return value;
 }

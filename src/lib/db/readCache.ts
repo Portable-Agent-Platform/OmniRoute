@@ -12,7 +12,7 @@
  *   const settings = await dbCache.getSettings();
  */
 
-import { normalizeBearerCredentialForRuntime } from "@/shared/utils/bearerCredential";
+import { normalizeNvidiaApiKeyForRuntime } from "@/shared/utils/bearerCredential";
 
 type CacheEntry<T> = {
   value: T;
@@ -151,7 +151,7 @@ export function normalizeCachedProviderConnectionForRuntime(
     ...value,
     apiKey:
       typeof value.apiKey === "string"
-        ? normalizeBearerCredentialForRuntime(value.apiKey)
+        ? normalizeNvidiaApiKeyForRuntime(value.apiKey)
         : value.apiKey,
   };
 }

@@ -17,6 +17,7 @@ import tlsClient, { type TlsFetchOptions, guardTlsFirstByte } from "./tlsClient.
 import { withUpstreamStatusCapture } from "./upstreamStatusCapture.ts";
 import { stampOwnListenerSelfHop } from "./selfHop.ts";
 import { describeFallbackFailure, redactProxyDetailsInMessage } from "./proxyFetchRedaction.ts";
+import { shouldUseNativeDirectFetch } from "./nativeDirectHosts.ts";
 import { recordFinalTransportOutcome, recordProxiedSuccess } from "./proxyTransportOutcome.ts";
 import { sanitizeTransportError } from "./proxyTransportError.ts";
 import { isProxyReachable } from "@/lib/proxyHealth";
@@ -836,6 +837,19 @@ async function patchedFetchUnrecorded(
     return originalFetch(input, options);
   }
 
+  const targetUrl = getTargetUrl(input);
+
+  // PAP/NVIDIA: choose native direct egress BEFORE honoring a caller-supplied
+  // dispatcher. The NVIDIA hosted edge can stall on OmniRoute's undici-v8
+  // pooled/fresh dispatchers; passing that dispatcher through to native fetch
+  // defeats the bypass. Only apply this when there is no explicit proxy context.
+  if (!proxyContext.getStore() && shouldUseNativeDirectFetch(targetUrl)) {
+    const { dispatcher: _ignoredDispatcher, ...nativeOptions } = options;
+    const _nativeFetch =
+      (deps.nativeFetch as FetchWithDispatcher | undefined) ?? originalFetchWithDispatcher;
+    return _nativeFetch(input, nativeOptions);
+  }
+
   if (options?.dispatcher) {
     // When a dispatcher is present, we MUST use the undici library fetch
     // to ensure version compatibility. Node 22 built-in fetch (undici v6)
@@ -844,8 +858,6 @@ async function patchedFetchUnrecorded(
       deps.undiciFetch ?? (undiciFetch as unknown as (...args: unknown[]) => Promise<Response>);
     return _undiciDispatcher(input, options);
   }
-
-  const targetUrl = getTargetUrl(input);
   let resolved;
   try {
     resolved = resolveProxyForRequest(targetUrl);
@@ -857,6 +869,16 @@ async function patchedFetchUnrecorded(
   const { source, proxyUrl } = resolved;
 
   if (!proxyUrl) {
+    // PAP/NVIDIA: the hosted NIM edge can stall on both the pooled and fresh
+    // custom undici-v8 dispatchers. For direct NVIDIA egress, use the runtime's
+    // original native fetch immediately. Explicit proxy routes are unaffected.
+    if (shouldUseNativeDirectFetch(targetUrl)) {
+      const { dispatcher: _ignoredDispatcher, ...nativeOptions } = options;
+      const _nativeFetch =
+        (deps.nativeFetch as FetchWithDispatcher | undefined) ?? originalFetchWithDispatcher;
+      return _nativeFetch(input, nativeOptions);
+    }
+
     // TLS fingerprint spoofing for an already-resolved direct route. Explicit
     // proxy:null prevents wreq from re-reading a global environment proxy.
     const tlsStore = tlsFingerprintContext.getStore();
