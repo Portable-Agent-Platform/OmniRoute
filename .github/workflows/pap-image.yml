@@ -48,6 +48,7 @@ jobs:
           context: .
           target: runner-base
           platforms: linux/amd64
+          load: ${{ github.event_name == 'pull_request' }}
           push: ${{ github.event_name != 'pull_request' }}
           build-args: |
             OMNIROUTE_USE_TURBOPACK=0
@@ -62,10 +63,49 @@ jobs:
           cache-from: type=gha,scope=pap-omniroute-amd64
           cache-to: type=gha,scope=pap-omniroute-amd64,mode=max,ignore-error=true
 
+      - name: Resolve smoke-test image
+        id: smoke-image
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ref="${IMAGE}:sha-${GITHUB_SHA}"
+          else
+            ref="${IMAGE}@${{ steps.build.outputs.digest }}"
+            docker pull "$ref"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Runtime health smoke test
+        shell: bash
+        env:
+          SMOKE_IMAGE: ${{ steps.smoke-image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          name="pap-omniroute-smoke-${GITHUB_RUN_ID}"
+          cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run -d --name "$name" --restart no \
+            -e REQUIRE_API_KEY=false \
+            -e OMNIROUTE_MEMORY_MB=1024 \
+            "$SMOKE_IMAGE" >/dev/null
+          healthy=0
+          for _ in $(seq 1 36); do
+            status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$name")"
+            if [ "$status" = healthy ]; then healthy=1; break; fi
+            if [ "$status" = exited ] || [ "$status" = dead ]; then break; fi
+            sleep 5
+          done
+          if [ "$healthy" -ne 1 ]; then
+            docker logs --tail 120 "$name" >&2 || true
+            exit 1
+          fi
+          docker exec "$name" node healthcheck.mjs
+
       - name: Record image identity
         run: |
           echo "### PAP OmniRoute container" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image: \`${IMAGE}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Digest: \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Runtime smoke: \`PASS\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Published: \`${{ github.event_name != 'pull_request' }}\`" >> "$GITHUB_STEP_SUMMARY"
