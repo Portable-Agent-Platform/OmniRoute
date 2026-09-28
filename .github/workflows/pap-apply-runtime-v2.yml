@@ -40,6 +40,15 @@ jobs:
           git fetch --depth=1 --filter=blob:none origin pap/nvidia-runtime-v2
           git checkout -B pap/nvidia-runtime-v2 FETCH_HEAD
 
+      - name: Verify transfer part 00
+        run: base64 -d .pap-transfer/runtime-v2-00.b64 | sha256sum | grep -q '^d1409e23d176973c452d635048e6164b2077c0c6d50a7e060ab85dec122a7299 '
+      - name: Verify transfer part 01
+        run: base64 -d .pap-transfer/runtime-v2-01.b64 | sha256sum | grep -q '^6d8fa04f9b3aec292194875350fbc2db8053c103de0b6fb0111ba5fe2b0b0528 '
+      - name: Verify transfer part 02
+        run: base64 -d .pap-transfer/runtime-v2-02.b64 | sha256sum | grep -q '^84b311e5fb84b8b7e80504c4ca1a57d4ff065baa614de3ce6b8c310277f4b411 '
+      - name: Verify transfer part 03
+        run: base64 -d .pap-transfer/runtime-v2-03.b64 | sha256sum | grep -q '^186cc60319afc3b59557be98059e14fb6262b061d0079b49d75cd7e4cc4fc080 '
+
       - name: Reassemble and verify patch
         shell: bash
         run: |
